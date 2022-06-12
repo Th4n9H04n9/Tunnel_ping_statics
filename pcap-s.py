@@ -4,13 +4,13 @@ import sys
 import time
 from scapy.utils import RawPcapReader
 from scapy.layers.l2 import Ether
-from scapy.layers.inet import IP, TCP
+from scapy.layers.inet import IP, TCP, ICMP
 import pickle
 from enum import Enum
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
-
+import binascii
 def analyze_pickle(pickle_file_in):
 
     packets_for_analysis = []
@@ -26,7 +26,7 @@ def analyze_pickle(pickle_file_in):
         if pkt_data['direction'] == PktDirection.server_to_client:
             continue
         client_pkts.append({'Time': pkt_data['relative_timestamp'],
-            'Size': pkt_data['size'],'BaseLine': 56})
+            'Size': pkt_data['size'],'BaseLine': 36})
 
     df = pd.DataFrame(data=client_pkts)
     fig, ax1 = plt.subplots()
@@ -85,11 +85,33 @@ def pickle_pcap(pcap_file_in, pickle_file_out):
             first_pkt_timestamp = (pkt_metadata.tshigh << 32) | pkt_metadata.tslow
             first_pkt_timestamp_resolution = pkt_metadata.tsresol
             first_pkt_ordinal = count
+            icmp_pkt = ether_pkt[ICMP]
+            icmp_length = ip_pkt.len - 20
+            print("Type ICMP: " + str(icmp_pkt.type))
+            print("Code ICMP: " + str(icmp_pkt.code))
+            print("Packet[1]-->Length: "+ str(icmp_length)) 
+            pkt = binascii.hexlify(bytes(icmp_pkt[1]))
+            str_pkt= str(pkt,'ascii')
+            print("-"*50)
+            print("ANALYSIS PTUNNEL PROTOCOL")
+            print("-"*50)
+            print("Magic Number (4 bytes): "+ str(pkt[0:8]))
+            print("IP Address Destination (4 bytes): "+ str(pkt[8:16]))
+            print("Port Destination (4 bytes): "+str(pkt[16:24]))
+            print("State - kUser/kProxy (1<<30 cho Client) (4 bytes): "+str(pkt[24:32]))
+            print("Ack Number (4 bytes): "+ str(pkt[32:40]))
+            print("Length of Data (4 bytes): "+str(pkt[40:48]))
+            print("Sequence Number (2 bytes): "+str(pkt[48:52]))
+            print("Indentifier (2 bytes): "+str(pkt[52:56]))
         last_pkt_timestamp = (pkt_metadata.tshigh << 32) | pkt_metadata.tslow
         last_pkt_timestamp_resolution = pkt_metadata.tsresol
         last_pkt_ordinal = count
         this_pkt_relative_timestamp = last_pkt_timestamp - first_pkt_timestamp
-        icmp_payload_len = ip_pkt.len - (ip_pkt.ihl * 4)
+        icmp_payload_len = ip_pkt.len-20;
+        
+        icmp_type = icmp_pkt.type
+        icmp_code = icmp_pkt.code
+
         fmt = '{ts:>10.6f}s len={len:<6d}'
         if direction == PktDirection.client_to_server:
             fmt = '{arrow}' + fmt
@@ -102,7 +124,7 @@ def pickle_pcap(pcap_file_in, pickle_file_out):
         #Khai bao data
         pkt_data = {}
         pkt_data['direction'] = direction
-        pkt_data['size']= icmp_payload_len
+        pkt_data['size']= icmp_payload_len;
         pkt_data['relative_timestamp'] = this_pkt_relative_timestamp / \
                                          pkt_metadata.tsresol
         packets_for_analysis.append(pkt_data)
